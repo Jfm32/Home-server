@@ -1,0 +1,5 @@
+# .ovhapi file
+dns_ovh_endpoint = ovh-eu
+dns_ovh_application_key = xxxxxxxxx
+dns_ovh_application_secret = xxxxxxxxx
+dns_ovh_consumer_key = xxxxxxxxx
