@@ -1,0 +1,156 @@
+services:
+  nginx:
+    container_name: nginx
+    restart: unless-stopped
+    image: nginx:stable
+    ports:
+      - 80:80
+      - 443:443
+
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro  # optional for virtual host structure
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+      - ./logs/nginx:/var/log/nginx  # enable log persistence
+
+    networks:
+      - nginx-network
+      - backend
+
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  fail2ban:
+    image: crazymax/fail2ban:latest
+    container_name: fail2ban
+    restart: unless-stopped
+    volumes:
+      - ./logs/nginx:/var/log/nginx:ro
+      - ./fail2ban:/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # optional, for Docker-aware bans
+    cap_add:
+      - NET_ADMIN  # required for banning IPs
+      - NET_RAW
+    network_mode: host  # needed for Fail2ban to ban host-level IPs
+
+  certbot:
+    container_name: certbot
+    image: certbot/dns-ovh
+
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt:rw
+      - ./certbot/www:/var/www/certbot:rw
+      - ./certbot/.ovhapi:/root/.ovhapi
+    #command: certonly --webroot -w /var/www/certbot --force-renewal --email ${EMAIL} -d ${DOMAIN} --agree-tos
+    command: certonly -v --dns-ovh --dns-ovh-credentials /root/.ovhapi --non-interactive --agree-tos --email ${EMAIL} -d ${DOMAIN} -d code.${DOMAIN} -d www.${DOMAIN}
+
+
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:latest
+    container_name: oauth2-proxy
+    environment:
+      - OAUTH2_PROXY_PROVIDER=github # we will override with basic auth
+      - OAUTH2_PROXY_COOKIE_DOMAIN=${DOMAIN}
+      - OAUTH2_PROXY_CLIENT_ID=${CLIENT_ID}
+      - OAUTH2_PROXY_CLIENT_SECRET=${CLIENT_SECRET}
+      - OAUTH2_PROXY_COOKIE_SECRET=${COOKIE_SECRET} 
+      - OAUTH2_PROXY_EMAIL_DOMAINS=*
+      - OAUTH2_PROXY_ALLOWED_EMAILS=${EMAIL}
+      - OAUTH2_PROXY_PASS_AUTHORIZATION_HEADER=true
+      - OAUTH2_PROXY_SET_AUTHORIZATION_HEADER=true
+      - OAUTH2_PROXY_HTTP_ADDRESS=0.0.0.0:4180
+      - OAUTH2_PROXY_SKIP_PROVIDER_BUTTON=true
+      - OAUTH2_PROXY_PASS_ACCESS_TOKEN=false
+      - OAUTH2_PROXY_COOKIE_SECURE=true
+      - OAUTH2_PROXY_COOKIE_HTTPONLY=true
+      - OAUTH2_PROXY_SET_XAUTHREQUEST=true
+      - OAUTH2_PROXY_REDIRECT_URL=https://${DOMAIN}/oauth2/callback
+      - OAUTH2_PROXY_UPSTREAMS=http://hub:5000/
+    ports:
+      - 4180:4180
+    networks:
+      - nginx-network
+      - backend
+    restart: unless-stopped
+
+
+  code-server:
+    image: lscr.io/linuxserver/code-server:latest
+    container_name: code-server
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      - PROXY_DOMAIN=code.${DOMAIN}
+      - DEFAULT_WORKSPACE=/config/ #optional
+    volumes:
+      - ~/code-server/config:/config
+    ports:
+      - 8443:8443
+    restart: unless-stopped
+    networks:
+      - backend
+
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+    volumes:
+      - ./data/jellyfin/library:/config
+      - ./data/jellyfin/tvseries:/data/tvshows
+      - ./data/jellyfin/movies:/data/movies
+    ports:
+      - 8096:8096
+      - 7359:7359/udp #facultatif
+      - 1900:1900/udp #facultatif
+    restart: unless-stopped
+    networks:
+      - backend
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    environment:
+      - PUID=1000
+      - PGID=100
+      - TZ=Etc/UTC
+      - WEBUI_PORT=9090
+      - TORRENTING_PORT=6881
+    volumes:
+      - ./data/qbittorrent/appdata:/config
+      - ./data/jellyfin/movies:/downloads #optional
+    ports:
+      - 9090:9090
+      - 6881:6881
+      - 6881:6881/udp
+    restart: unless-stopped
+    networks:
+      - backend
+
+
+  hub:
+    image: python:3.12-slim
+    container_name: hub
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./hub:/app
+    command: sh -c "pip install flask && python hub.py --host=0.0.0.0"
+    ports:
+      - 5000:5000
+    networks:
+      - backend
+
+
+networks:
+  nginx-network:
+    driver: bridge
+  backend:
+    driver: bridge

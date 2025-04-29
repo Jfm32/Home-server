@@ -1,0 +1,12 @@
+###Home-server###
+
+# Secret files
+*.env
+*.ovhapi
+
+# Directory
+/certbot/*
+/fail2ban/*
+
+# Files
+*.log
