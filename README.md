@@ -2,7 +2,6 @@
 
 A simple to setup home-server easly customizable. The all purpose of the project is to make it has easy has possible to setup a home server on an old computer using OVH domain name and Github to connect to the services. The main guide on how to setup the server and use the different apps already build in his aimed at low experience to new user of docker and the apps used. 
 
-In a way it's the self made Arr suite with extra information on how to push-it in production with good security.
 
 > [!WARNING]  
 > This setup can cause a lowered quality of wifi connection on your network. 
